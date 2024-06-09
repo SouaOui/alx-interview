@@ -1,46 +1,73 @@
-#!/usr/bin/python3
-import requests
-import json
-import sys
+#!/usr/bin/node
+const https = require('https');
 
+function fetchUrl (url, callback) {
+  https
+    .get(url, (res) => {
+      let data = '';
+      const { statusCode, headers } = res;
 
-def get_and_print_character_names(film_id):
-    """Fetches character names from the Star Wars API for a given film ID.
+      if (statusCode === 301 || statusCode === 302) {
+        const newUrl = headers.location;
+        fetchUrl(newUrl, callback);
+        return;
+      }
 
-    Args:
-        film_id (int): The ID of the film to retrieve characters from.
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
 
-    Prints the names of all characters associated with the film.
+      res.on('end', () => {
+        if (statusCode !== 200) {
+          callback(new Error(`Failed to fetch data: ${statusCode}`), null);
+          return;
+        }
+        callback(null, data);
+      });
+    })
+    .on('error', (error) => {
+      callback(error, null);
+    });
+}
 
-    Raises:
-        requests.exceptions.RequestException:
-                If an error occurs during the API request.
-    """
+function getAndPrintCharacterNames (filmId) {
+  const url = `https://swapi-api.alx-tools.com/api/films/${filmId}`;
 
-    url = f"https://swapi-api.alx-tools.com/api/films/{film_id}"
+  fetchUrl(url, (error, data) => {
+    if (error) {
+      console.error(`Error fetching film data: ${error.message}`);
+      return;
+    }
 
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
+    try {
+      const filmData = JSON.parse(data);
+      const characterUrls = filmData.characters;
 
-        data = json.loads(response.text)
-        character_urls = data["characters"]
+      characterUrls.forEach((characterUrl) => {
+        fetchUrl(characterUrl, (error, data) => {
+          if (error) {
+            console.error(`Error fetching character data: ${error.message}`);
+            return;
+          }
 
-        for character_url in character_urls:
-            response = requests.get(character_url)
-            response.raise_for_status()
+          try {
+            const character = JSON.parse(data);
+            console.log(character.name);
+          } catch (error) {
+            console.error('Error parsing character data:', error.message);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error parsing film data:', error.message);
+    }
+  });
+}
 
-            character_data = json.loads(response.text)
-            print(character_data["name"])
+if (process.argv.length !== 3) {
+  console.log('Usage: node script.js <film_id>');
+  process.exit(1);
+}
 
-    except requests.exceptions.RequestException as e:
-        print(f"An error occurred fetching character names: {e}")
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: script.py <film_id>")
-        exit(1)
-
-    film_id = int(sys.argv[1])
-    get_and_print_character_names(film_id)
+const filmId = parseInt(process.argv[2], 10);
+getAndPrintCharacterNames(filmId);
